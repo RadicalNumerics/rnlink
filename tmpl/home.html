@@ -1,8 +1,23 @@
 {{ define "main" }}
 <link rel="stylesheet" href="/.static/directory.css">
+{{if not .ReadOnly}}
+<section id="create-link" class="create-link" aria-label="Add a link">
+  <form method="POST" action="/" class="directory-form" id="create-form">
+    <input type="hidden" name="xsrf" value="{{.XSRF}}">
+    <div class="path-input"><span id="path-prefix">{{go}}/</span><input id="short" name="short" aria-label="New link path" required type="text" value="{{.Short}}" placeholder="add a link" autocomplete="off" pattern="\w[\w\-\.]*" aria-controls="create-fields" title="Start with a letter, digit, or underscore; use letters, digits, underscores, dashes, and periods."><span aria-hidden="true">/</span></div>
+    <div id="create-fields" class="create-fields">
+      <div><label for="long">Destination</label><input id="long" name="long" required type="text" placeholder="https://…" {{if .Short}}value="{{.Long}}"{{end}}></div>
+      <div><label for="description">Description</label><textarea id="description" name="description" required rows="2" placeholder="What will teammates find here?"></textarea></div>
+      <div class="link-preview" aria-label="Link preview" aria-live="polite"><span class="preview-label">Preview</span><strong id="preview-path">{{go}}/{{.Short}}/</strong><span id="preview-description">Describe this link</span><span id="preview-destination">Add a destination</span></div>
+      <div class="form-actions"><button class="directory-button" type="submit">Add link</button><a class="directory-edit" href="/.help">Advanced options</a></div>
+    </div>
+  </form>
+</section>
+<script src="/.static/directory.js" defer></script>
+{{end}}
+
 <div class="directory-heading">
   <div><h2>Popular links</h2><p>Your team's most-used shortcuts.</p></div>
-  {{if not .ReadOnly}}<a class="directory-button" href="#create-link">Add a link</a>{{end}}
 </div>
 <section class="popular-grid" aria-label="Popular links">
   {{range .Popular}}
@@ -11,7 +26,7 @@
     <span class="link-description">{{if .Description}}{{.Description}}{{else}}{{.Long}}{{end}}</span>
     <span class="click-count">{{.NumClicks}} clicks</span>
   </a>
-  {{else}}<p>No links yet. Add your first shortcut below.</p>{{end}}
+  {{else}}<p>No links yet. Add your first shortcut above.</p>{{end}}
 </section>
 
 <section class="all-links" aria-labelledby="all-links-title">
@@ -34,19 +49,4 @@
   </div>
 </section>
 
-<section id="create-link" class="create-link" aria-labelledby="create-title">
-  {{if .ReadOnly}}
-    <p>{{go}} is running in read-only mode. Links can be opened, but not created or updated.</p>
-  {{else}}
-    <h2 id="create-title">Add a link</h2>
-    {{with .Long}}<p>Did you mean <a class="directory-path" href="{{.}}">{{.}}</a>? Create a shortcut for it:</p>{{end}}
-    <form method="POST" action="/" class="directory-form">
-      <input type="hidden" name="xsrf" value="{{.XSRF}}">
-      <div><label for="short">Path</label><div class="path-input"><span>{{go}}/</span><input id="short" name="short" required type="text" value="{{.Short}}" placeholder="gpus" pattern="\w[\w\-\.]*" title="Start with a letter, digit, or underscore; use letters, digits, underscores, dashes, and periods."><span aria-hidden="true">/</span></div></div>
-      <div><label for="long">Destination</label><input id="long" name="long" required type="text" placeholder="https://…" {{if .Short}}value="{{.Long}}" autofocus{{end}}></div>
-      <div class="description-input"><label for="description">Description <span class="muted">(optional)</span></label><textarea id="description" name="description" rows="2" placeholder="What will teammates find here?"></textarea></div>
-      <div class="form-actions"><button class="directory-button" type="submit">Create link</button><a class="directory-edit" href="/.help">Advanced options</a></div>
-    </form>
-  {{end}}
-</section>
 {{ end }}

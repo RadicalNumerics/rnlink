@@ -21,8 +21,8 @@
 
       <p class="text-sm text-gray-500"><a class="text-blue-600 hover:underline" href="/.help">Help and advanced options</a></p>
 
-      <label for="description" class="text-sm font-bold block mt-4">Description (optional)</label>
-      <textarea id="description" name="description" rows="3" class="p-2 rounded-md border-gray-300 w-full">{{.Link.Description}}</textarea>
+      <label for="description" class="text-sm font-bold block mt-4">Description</label>
+      <textarea id="description" name="description" required rows="3" class="p-2 rounded-md border-gray-300 w-full">{{.Link.Description}}</textarea>
 
       <label for=owner class="text-sm font-bold block mt-4">Owner</label>
       <input id=owner name=owner required type=text size=25 placeholder="Owner" value="{{.Link.Owner}}" class="p-2 rounded-md border-gray-300 placeholder:text-gray-400 disabled:bg-gray-100">

@@ -198,3 +198,34 @@ func TestDirectoryTrailingSlash(t *testing.T) {
 		}
 	}
 }
+
+func TestDescriptionRequired(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		for _, value := range []string{"", "  \n "} {
+			t.Run(fmt.Sprintf("existing=%v/value=%q", existing, value), func(t *testing.T) {
+				s := newTestServer(t)
+				tokenName := newShortName
+				if existing {
+					s.db.Save(&Link{Short: "required", Long: "https://example.com/original", Description: "Original description"})
+					tokenName = "required"
+				}
+				fields := url.Values{"short": {"required"}, "long": {"https://example.com/changed"}, "description": {value}, "xsrf": {xsrftoken.Generate(s.xsrfKey, "foo@example.com", tokenName)}}
+				r := httptest.NewRequest("POST", "/", strings.NewReader(fields.Encode()))
+				r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				w := httptest.NewRecorder()
+				s.serveSave(w, r)
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("got %d, want 400", w.Code)
+				}
+				if existing {
+					link, _ := s.db.Load("required")
+					if link.Description != "Original description" || link.Long != "https://example.com/original" {
+						t.Fatal("invalid request mutated link")
+					}
+				} else if link, _ := s.db.Load("required"); link != nil {
+					t.Fatal("invalid request created link")
+				}
+			})
+		}
+	}
+}

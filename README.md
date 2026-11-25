@@ -7,10 +7,10 @@ installing the optional browser extensions. Link labels and URLs use a trailing
 slash (`rn/gpus/`) by default for browsers that recognize that form without an
 extension; explicit `http://rn/gpus/` remains available when needed. The index shows the 12 most-used links in a responsive three-column grid,
 followed by the complete alphabetical directory with clickable paths,
-descriptions, dates, and creators. Descriptions can be supplied in the create
-and edit forms or through the optional `description` POST field. Existing API
-clients that omit the field preserve the current description; an empty value
-clears it.
+descriptions, dates, and creators. The compact add-link form at the top expands as you type, with a live preview.
+Descriptions are required when creating or editing links, including via the
+`description` POST field. Updates that omit the field preserve a nonempty
+existing description; blank descriptions are rejected.
 
 On first startup, existing SQLite databases receive additive `Description` and
 `CreatedBy` columns. New links record their original creator separately from the
