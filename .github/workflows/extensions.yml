@@ -1,0 +1,26 @@
+name: Browser extensions
+on:
+  pull_request:
+    paths:
+      - 'extensions/**'
+      - '.github/workflows/extensions.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'extensions/**'
+      - '.github/workflows/extensions.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node extensions/scripts/build.mjs https://rn.example.ts.net/
+      - run: node extensions/test/routing.mjs
+      - run: node --check extensions/dist/diagnostics.js
+      - name: Compile filters with native WebKit
+        run: swift extensions/test/webkit.swift extensions/dist/rules.json

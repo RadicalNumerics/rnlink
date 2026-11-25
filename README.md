@@ -1,3 +1,10 @@
+# rnlink
+
+Radical Numerics’ fork of [tailscale/golink](https://github.com/tailscale/golink),
+with the redirect server and Chrome/Safari extensions in one repository.
+See [extensions/README.md](extensions/README.md) for building, testing, and
+installing the browser extensions. The upstream server documentation follows.
+
 # golink
 
 golink is a private shortlink service for your [tailnet].
