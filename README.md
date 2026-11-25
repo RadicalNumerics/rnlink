@@ -1,3 +1,28 @@
+# rnlink
+
+Radical Numerics’ fork of [tailscale/golink](https://github.com/tailscale/golink),
+with the redirect server and Chrome/Safari extensions in one repository.
+See [extensions/README.md](extensions/README.md) for building, testing, and
+installing the optional browser extensions. Link labels and URLs use a trailing
+slash (`rn/gpus/`) by default for browsers that recognize that form without an
+extension; explicit `http://rn/gpus/` remains available when needed. The index shows the 12 most-used links in a responsive three-column grid,
+followed by the complete alphabetical directory with clickable paths,
+descriptions, dates, and creators. Descriptions can be supplied in the create
+and edit forms or through the optional `description` POST field. Existing API
+clients that omit the field preserve the current description; an empty value
+clears it.
+
+On first startup, existing SQLite databases receive additive `Description` and
+`CreatedBy` columns. New links record their original creator separately from the
+transferable owner. Legacy links show “Not recorded” for their creator because
+upstream did not retain that information. JSON exports include both new fields;
+older snapshots remain importable. If all legacy links were created by one
+known person, start once with `--legacy-creator=their-login@example.com` to fill
+only missing creator fields. Remove the flag afterward; recorded creators are
+never overwritten. Do not use this option if legacy links have mixed creators. Back up the database before upgrading.
+
+The upstream server documentation follows.
+
 # golink
 
 golink is a private shortlink service for your [tailnet].

@@ -21,11 +21,13 @@ import (
 
 // Link is the structure stored for each go short link.
 type Link struct {
-	Short    string // the "foo" part of http://go/foo
-	Long     string // the target URL or text/template pattern to run
-	Created  time.Time
-	LastEdit time.Time // when the link was last edited
-	Owner    string    // user@domain
+	Description string `json:",omitempty"` // optional plain-text explanation
+	CreatedBy   string `json:",omitempty"` // original creator; empty for legacy links
+	Short       string // the "foo" part of http://go/foo
+	Long        string // the target URL or text/template pattern to run
+	Created     time.Time
+	LastEdit    time.Time // when the link was last edited
+	Owner       string    // user@domain
 }
 
 // ClickStats is the number of clicks a set of links have received in a given
@@ -56,6 +58,12 @@ func NewSQLiteDB(f string) (*SQLiteDB, error) {
 	if err != nil {
 		return nil, err
 	}
+	success := false
+	defer func() {
+		if !success {
+			db.Close()
+		}
+	}()
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
@@ -64,6 +72,42 @@ func NewSQLiteDB(f string) (*SQLiteDB, error) {
 		return nil, err
 	}
 
+	// CREATE TABLE does not add columns to existing databases. Apply additive,
+	// transactional migrations so older databases and backups remain readable.
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query("SELECT name FROM pragma_table_info('Links')")
+	if err != nil {
+		return nil, err
+	}
+	columns := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		columns[name] = true
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range []string{"Description", "CreatedBy"} {
+		if !columns[name] {
+			if _, err := tx.Exec("ALTER TABLE Links ADD COLUMN " + name + " TEXT NOT NULL DEFAULT ''"); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	success = true
 	return &SQLiteDB{db: db}, nil
 }
 
@@ -80,14 +124,15 @@ func (s *SQLiteDB) LoadAll() ([]*Link, error) {
 	defer s.mu.RUnlock()
 
 	var links []*Link
-	rows, err := s.db.Query("SELECT Short, Long, Created, LastEdit, Owner FROM Links")
+	rows, err := s.db.Query("SELECT Short, Long, Created, LastEdit, Owner, Description, CreatedBy FROM Links")
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		link := new(Link)
 		var created, lastEdit int64
-		err := rows.Scan(&link.Short, &link.Long, &created, &lastEdit, &link.Owner)
+		err := rows.Scan(&link.Short, &link.Long, &created, &lastEdit, &link.Owner, &link.Description, &link.CreatedBy)
 		if err != nil {
 			return nil, err
 		}
@@ -109,8 +154,8 @@ func (s *SQLiteDB) Load(short string) (*Link, error) {
 
 	link := new(Link)
 	var created, lastEdit int64
-	row := s.db.QueryRow("SELECT Short, Long, Created, LastEdit, Owner FROM Links WHERE ID = ?1 LIMIT 1", linkID(short))
-	err := row.Scan(&link.Short, &link.Long, &created, &lastEdit, &link.Owner)
+	row := s.db.QueryRow("SELECT Short, Long, Created, LastEdit, Owner, Description, CreatedBy FROM Links WHERE ID = ?1 LIMIT 1", linkID(short))
+	err := row.Scan(&link.Short, &link.Long, &created, &lastEdit, &link.Owner, &link.Description, &link.CreatedBy)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			err = fs.ErrNotExist
@@ -127,7 +172,7 @@ func (s *SQLiteDB) Save(link *Link) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result, err := s.db.Exec("INSERT OR REPLACE INTO Links (ID, Short, Long, Created, LastEdit, Owner) VALUES (?, ?, ?, ?, ?, ?)", linkID(link.Short), link.Short, link.Long, link.Created.Unix(), link.LastEdit.Unix(), link.Owner)
+	result, err := s.db.Exec("INSERT OR REPLACE INTO Links (ID, Short, Long, Created, LastEdit, Owner, Description, CreatedBy) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", linkID(link.Short), link.Short, link.Long, link.Created.Unix(), link.LastEdit.Unix(), link.Owner, link.Description, link.CreatedBy)
 	if err != nil {
 		return err
 	}
@@ -232,14 +277,15 @@ func (s *SQLiteDB) GetLinksByOwner(owner string) ([]*Link, error) {
 	defer s.mu.RUnlock()
 
 	var links []*Link
-	rows, err := s.db.Query("SELECT Short, Long, Created, LastEdit, Owner FROM Links WHERE LOWER(Owner) = LOWER(?)", owner)
+	rows, err := s.db.Query("SELECT Short, Long, Created, LastEdit, Owner, Description, CreatedBy FROM Links WHERE LOWER(Owner) = LOWER(?)", owner)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		link := new(Link)
 		var created, lastEdit int64
-		err := rows.Scan(&link.Short, &link.Long, &created, &lastEdit, &link.Owner)
+		err := rows.Scan(&link.Short, &link.Long, &created, &lastEdit, &link.Owner, &link.Description, &link.CreatedBy)
 		if err != nil {
 			return nil, err
 		}
@@ -248,4 +294,16 @@ func (s *SQLiteDB) GetLinksByOwner(owner string) ([]*Link, error) {
 		links = append(links, link)
 	}
 	return links, rows.Err()
+}
+
+// BackfillCreator attributes legacy links whose original creator was not recorded.
+// Use only when an operator knows these links were all created by this person.
+func (s *SQLiteDB) BackfillCreator(login string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(login) == "" {
+		return errors.New("creator login is required")
+	}
+	_, err := s.db.Exec("UPDATE Links SET CreatedBy = ? WHERE CreatedBy = ''", login)
+	return err
 }

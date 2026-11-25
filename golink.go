@@ -248,6 +248,7 @@ func Run(ctx context.Context) error {
 		resolveFromBackup = flag.String("resolve-from-backup", "", "resolve a link from snapshot file and exit")
 		allowUnknownUsers = flag.Bool("allow-unknown-users", false, "allow unknown users to save links")
 		readonly          = flag.Bool("readonly", false, "start golink server in read-only mode")
+		legacyCreator     = flag.String("legacy-creator", "", "attribute existing links with unknown creators to this login")
 		advertiseTags     = flag.String("advertise-tags", os.Getenv("TS_ADVERTISE_TAGS"), "comma-separated list of ACL tags to advertise (e.g. tag:golink)")
 		serviceName       = flag.String("register-as-service", envknob.String("TS_SERVICE_NAME"), "register as a Tailscale Service (e.g., svc:golink); requires tagged node")
 	)
@@ -308,6 +309,12 @@ func Run(ctx context.Context) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	if creator := strings.TrimSpace(*legacyCreator); creator != "" {
+		if err := db.BackfillCreator(creator); err != nil {
+			return fmt.Errorf("backfill creator: %w", err)
+		}
 	}
 
 	// if link specified on command line, resolve and exit
@@ -489,11 +496,6 @@ func serveHTTP(ctx context.Context, servers ...listenerServer) error {
 	return serveErr
 }
 
-type visitData struct {
-	Short     string
-	NumClicks int
-}
-
 // searchResult is a link paired with its current click count, used to render
 // the listing template (searchTmpl) served by /.all and /.search.
 type searchResult struct {
@@ -522,7 +524,8 @@ func (s *Server) searchResults(links []*Link) []searchResult {
 type homeData struct {
 	Short    string
 	Long     string
-	Clicks   []visitData
+	Popular  []searchResult
+	Links    []searchResult
 	XSRF     string
 	ReadOnly bool
 	User     string
@@ -719,25 +722,21 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) serveHome(w http.ResponseWriter, r *http.Request, short string) {
-	var clicks []visitData
-
-	s.stats.mu.Lock()
-	for short, numClicks := range s.stats.clicks {
-		clicks = append(clicks, visitData{
-			Short:     short,
-			NumClicks: numClicks,
-		})
+	links, err := s.db.LoadAll()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	s.stats.mu.Unlock()
-
-	sort.Slice(clicks, func(i, j int) bool {
-		if clicks[i].NumClicks != clicks[j].NumClicks {
-			return clicks[i].NumClicks > clicks[j].NumClicks
+	all := s.searchResults(links)
+	popular := append([]searchResult(nil), all...)
+	sort.Slice(popular, func(i, j int) bool {
+		if popular[i].NumClicks != popular[j].NumClicks {
+			return popular[i].NumClicks > popular[j].NumClicks
 		}
-		return clicks[i].Short < clicks[j].Short
+		return popular[i].Short < popular[j].Short
 	})
-	if len(clicks) > 200 {
-		clicks = clicks[:200]
+	if len(popular) > 12 {
+		popular = popular[:12]
 	}
 
 	var long string
@@ -762,7 +761,8 @@ func (s *Server) serveHome(w http.ResponseWriter, r *http.Request, short string)
 	s.homeTmpl.Execute(w, homeData{
 		Short:    short,
 		Long:     long,
-		Clicks:   clicks,
+		Popular:  popular,
+		Links:    all,
 		XSRF:     xsrftoken.Generate(s.xsrfKey, cu.login, newShortName),
 		ReadOnly: s.readonly,
 		User:     cu.login,
@@ -1304,13 +1304,18 @@ func (s *Server) serveSave(w http.ResponseWriter, r *http.Request) {
 	newLink := false
 	if link == nil {
 		link = &Link{
-			Short:   short,
-			Created: now,
+			Short:     short,
+			Created:   now,
+			CreatedBy: cu.login,
 		}
 		newLink = true
 	}
 	link.Short = short
 	link.Long = long
+	// Omitted descriptions from older API clients must not erase existing text.
+	if r.PostForm.Has("description") {
+		link.Description = strings.TrimSpace(r.PostFormValue("description"))
+	}
 	link.LastEdit = now
 	link.Owner = owner
 	if err := s.db.Save(link); err != nil {
