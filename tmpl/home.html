@@ -1,48 +1,52 @@
 {{ define "main" }}
-    {{ if .ReadOnly }}
-      <p class="rounded-md py-3 px-4 bg-orange-0 border border-orange-50">{{go}} is running in read-only mode. Links can be resolved, but not created or updated.</p>
-    {{ else }}
-      <h2 class="text-xl font-bold pb-2">Create a new link</h2>
+<link rel="stylesheet" href="/.static/directory.css">
+<div class="directory-heading">
+  <div><h2>Popular links</h2><p>Your team's most-used shortcuts.</p></div>
+  {{if not .ReadOnly}}<a class="directory-button" href="#create-link">Add a link</a>{{end}}
+</div>
+<section class="popular-grid" aria-label="Popular links">
+  {{range .Popular}}
+  <a class="popular-card" href="/{{.Short}}/">
+    <strong>{{go}}/{{.Short}}/</strong>
+    <span class="link-description">{{if .Description}}{{.Description}}{{else}}{{.Long}}{{end}}</span>
+    <span class="click-count">{{.NumClicks}} clicks</span>
+  </a>
+  {{else}}<p>No links yet. Add your first shortcut below.</p>{{end}}
+</section>
 
-      {{ with .Long }}
-      <p class="">Did you mean <a class="text-blue-600 hover:underline" href="{{.}}">{{.}}</a> ? Create a {{go}} link for it now:</p>
-      {{ end }}
-      <form method="POST" action="/" class="flex flex-wrap">
-        <input type="hidden" name="xsrf" value="{{ .XSRF }}" />
-        <div class="flex">
-          <label for=short class="flex my-2 px-2 items-center bg-gray-100 border border-r-0 border-gray-300 rounded-l-md text-gray-700">http://{{go}}/</label>
-          <input id=short name=short required type=text size=15 placeholder="shortname" value="{{.Short}}" pattern="\w[\w\-\.]*" title="Must start with letter or number; may contain letters, numbers, dashes, and periods."
-            class="p-2 my-2 rounded-r-md border-gray-300 placeholder:text-gray-400">
-          <span class="flex m-2 items-center">&rarr;</span>
-        </div>
-        <input name=long required type=text size=40 placeholder="https://destination-url"{{if .Short}} value="{{.Long}}" autofocus{{end}} class="p-2 my-2 mr-2 max-w-full rounded-md border-gray-300 placeholder:text-gray-400">
-        <button type=submit class="py-2 px-4 my-2 rounded-md bg-blue-500 border-blue-500 text-white hover:bg-blue-600 hover:border-blue-600">Create</button>
-      </form>
-      <p class="text-sm text-gray-500"><a class="text-blue-600 hover:underline" href="/.help">Help and advanced options</a></p>
-    {{ end }}
-
-    <h2 class="text-xl font-bold pt-6 pb-2">Popular Links</h2>
-    <table class="table-auto ">
-      <thead class="border-b border-gray-200 uppercase text-xs text-gray-500 text-left">
-        <tr>
-          <th class="p-2">Link</th>
-          <th class="p-2">Clicks</th>
-        </tr>
-      </thead>
+<section class="all-links" aria-labelledby="all-links-title">
+  <div class="directory-heading"><h2 id="all-links-title">All links <span class="link-count">{{len .Links}}</span></h2></div>
+  <div class="directory-table-scroll">
+    <table class="directory-table">
+      <thead><tr><th scope="col">Path</th><th scope="col">Description</th><th scope="col">Added</th><th scope="col">Added by</th><th scope="col">Manage</th></tr></thead>
       <tbody>
-      {{range .Clicks}}
-        <tr class="hover:bg-gray-100 group border-b border-gray-200">
-          <td class="flex">
-            <a class="block flex-1 p-2 pr-4 hover:text-blue-500 hover:underline" href="/{{.Short}}">{{go}}/{{.Short}}</a>
-            <a class="flex items-center px-2 invisible group-hover:visible" title="Link Details" href="/.detail/{{.Short}}">
-              <svg class="hover:fill-blue-500" xmlns="http://www.w3.org/2000/svg" height="1.3em" viewBox="0 0 24 24" width="1.3em" fill="#000000" stroke-width="2"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
-            </a>
-          </td>
-          <td class="p-2">{{.NumClicks}}</td>
+      {{range .Links}}
+        <tr>
+          <td><a class="directory-path" href="/{{.Short}}/">{{go}}/{{.Short}}/</a></td>
+          <td class="description-cell">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
+          <td class="date-cell"><time datetime="{{.Created.Format "2006-01-02T15:04:05Z07:00"}}" title="{{.Created.Format "Jan 2, 2006 15:04 MST"}}">{{.Created.Format "Jan 2, 2006"}}</time></td>
+          <td class="creator-cell">{{if .CreatedBy}}{{.CreatedBy}}{{else}}<span class="muted" title="The original creator was not recorded for this link.">Not recorded</span>{{end}}</td>
+          <td><a class="directory-edit" href="/.detail/{{.Short}}" aria-label="Details for {{go}}/{{.Short}}/">Details</a></td>
         </tr>
-      {{end}}
+      {{else}}<tr><td colspan="5" class="muted">No links yet.</td></tr>{{end}}
       </tbody>
     </table>
-    <p class="my-2 text-sm"><a class="text-blue-600 hover:underline" href="/.search?q=owner:{{.User}}">See my links.</a></p>
-    <p class="my-2 text-sm"><a class="text-blue-600 hover:underline" href="/.all">See all links.</a></p>
+  </div>
+</section>
+
+<section id="create-link" class="create-link" aria-labelledby="create-title">
+  {{if .ReadOnly}}
+    <p>{{go}} is running in read-only mode. Links can be opened, but not created or updated.</p>
+  {{else}}
+    <h2 id="create-title">Add a link</h2>
+    {{with .Long}}<p>Did you mean <a class="directory-path" href="{{.}}">{{.}}</a>? Create a shortcut for it:</p>{{end}}
+    <form method="POST" action="/" class="directory-form">
+      <input type="hidden" name="xsrf" value="{{.XSRF}}">
+      <div><label for="short">Path</label><div class="path-input"><span>{{go}}/</span><input id="short" name="short" required type="text" value="{{.Short}}" placeholder="gpus" pattern="\w[\w\-\.]*" title="Start with a letter, digit, or underscore; use letters, digits, underscores, dashes, and periods."><span aria-hidden="true">/</span></div></div>
+      <div><label for="long">Destination</label><input id="long" name="long" required type="text" placeholder="https://…" {{if .Short}}value="{{.Long}}" autofocus{{end}}></div>
+      <div class="description-input"><label for="description">Description <span class="muted">(optional)</span></label><textarea id="description" name="description" rows="2" placeholder="What will teammates find here?"></textarea></div>
+      <div class="form-actions"><button class="directory-button" type="submit">Create link</button><a class="directory-edit" href="/.help">Advanced options</a></div>
+    </form>
+  {{end}}
+</section>
 {{ end }}
