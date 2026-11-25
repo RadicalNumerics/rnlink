@@ -501,6 +501,7 @@ func serveHTTP(ctx context.Context, servers ...listenerServer) error {
 type searchResult struct {
 	*Link
 	NumClicks int
+	Rank      int
 }
 
 // searchResults annotates links with their current click counts (read from the
@@ -526,6 +527,7 @@ type homeData struct {
 	Long     string
 	Popular  []searchResult
 	Links    []searchResult
+	Other    []searchResult
 	XSRF     string
 	ReadOnly bool
 	User     string
@@ -548,7 +550,7 @@ func (s *Server) tmplFuncs() template.FuncMap {
 		// go is a template function that returns the hostname of the golink service.
 		// This is used throughout the UI to render links, but does not impact link resolution.
 		"go": func() string {
-			if s.dev {
+			if s.dev && strings.Contains(s.hostname, ":") {
 				// in dev mode, just use "go" instead of "localhost:8080"
 				return defaultHostname
 			}
@@ -735,8 +737,19 @@ func (s *Server) serveHome(w http.ResponseWriter, r *http.Request, short string)
 		}
 		return popular[i].Short < popular[j].Short
 	})
-	if len(popular) > 12 {
-		popular = popular[:12]
+	if len(popular) > 10 {
+		popular = popular[:10]
+	}
+	pinned := make(map[string]bool, len(popular))
+	for i := range popular {
+		popular[i].Rank = i + 1
+		pinned[popular[i].Short] = true
+	}
+	var other []searchResult
+	for _, link := range all {
+		if !pinned[link.Short] {
+			other = append(other, link)
+		}
 	}
 
 	var long string
@@ -763,6 +776,7 @@ func (s *Server) serveHome(w http.ResponseWriter, r *http.Request, short string)
 		Long:     long,
 		Popular:  popular,
 		Links:    all,
+		Other:    other,
 		XSRF:     xsrftoken.Generate(s.xsrfKey, cu.login, newShortName),
 		ReadOnly: s.readonly,
 		User:     cu.login,

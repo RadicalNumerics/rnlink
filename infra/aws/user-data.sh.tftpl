@@ -1,0 +1,80 @@
+#!/bin/bash
+set -euo pipefail
+dnf install -y docker sqlite
+systemctl enable --now docker amazon-ssm-agent
+# Nitro names EBS devices by volume ID; wait for Terraform's attachment.
+DEVICE=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${volume_id}
+for attempt in $(seq 1 120); do
+  [ -b "$DEVICE" ] && break
+  sleep 2
+done
+test -b "$DEVICE"
+set +e
+FS_TYPE=$(blkid -s TYPE -o value "$DEVICE")
+BLKID_STATUS=$?
+set -e
+if [ "$BLKID_STATUS" -eq 2 ] && [ -z "$FS_TYPE" ]; then
+  mkfs.xfs "$DEVICE" # no -f: never force overwrite an existing filesystem
+elif [ "$BLKID_STATUS" -ne 0 ] || [ "$FS_TYPE" != xfs ]; then
+  echo "Refusing to mount or format an unreadable/unexpected filesystem" >&2
+  exit 1
+fi
+mkdir -p /srv/rnlink
+UUID=$(blkid -s UUID -o value "$DEVICE")
+printf 'UUID=%s /srv/rnlink xfs defaults,nofail 0 2\n' "$UUID" >> /etc/fstab
+mount /srv/rnlink
+mkdir -p /srv/rnlink/data
+chown 65532:65532 /srv/rnlink/data
+cat > /etc/systemd/system/rnlink.service <<'UNIT'
+[Unit]
+Description=RN private link directory
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+RequiresMountsFor=/srv/rnlink
+ConditionPathExists=/srv/rnlink/data/golink.db
+[Service]
+Restart=always
+RestartSec=30
+TimeoutStopSec=40
+ExecStartPre=/bin/sh -c '/usr/bin/aws ecr get-login-password --region ${region} | /usr/bin/docker login --username AWS --password-stdin ${registry}'
+ExecStartPre=/usr/bin/docker pull ${image}
+ExecStart=/usr/bin/docker run --rm --name rnlink --read-only --tmpfs /tmp --log-opt max-size=10m --log-opt max-file=3 --volume /srv/rnlink/data:/home/nonroot ${image} --hostname=rn --sqlitedb=/home/nonroot/golink.db
+ExecStop=/usr/bin/docker stop --time 25 rnlink
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /usr/local/sbin/rnlink-backup <<'BACKUP'
+#!/bin/bash
+set -euo pipefail
+umask 077
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+sqlite3 /srv/rnlink/data/golink.db ".backup '$TMP/golink.db'"
+aws s3 cp "$TMP/golink.db" "s3://${bucket}/backups/$(date -u +%Y-%m-%dT%H-%M-%SZ).db" --region ${region} --sse AES256 --only-show-errors
+BACKUP
+chmod 700 /usr/local/sbin/rnlink-backup
+cat > /etc/systemd/system/rnlink-backup.service <<'UNIT'
+[Unit]
+Description=Back up RN SQLite database
+RequiresMountsFor=/srv/rnlink
+ConditionPathExists=/srv/rnlink/data/golink.db
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rnlink-backup
+UNIT
+cat > /etc/systemd/system/rnlink-backup.timer <<'UNIT'
+[Unit]
+Description=Daily RN database backup
+[Timer]
+OnCalendar=*-*-* 08:00:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable rnlink.service
+systemctl enable --now rnlink-backup.timer
+# Starting is deliberately separate from provisioning. Restore the data and
+# stop the previous host before starting a copied Tailscale identity here.

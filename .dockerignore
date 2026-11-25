@@ -1,0 +1,8 @@
+node_modules
+extensions/.cache
+extensions/dist
+infra/**/.terraform
+infra/**/*.tfstate*
+infra/**/*.tfplan
+infra/**/*.tfvars
+infra/**/backend.hcl

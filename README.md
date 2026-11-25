@@ -5,12 +5,15 @@ with the redirect server and Chrome/Safari extensions in one repository.
 See [extensions/README.md](extensions/README.md) for building, testing, and
 installing the optional browser extensions. Link labels and URLs use a trailing
 slash (`rn/gpus/`) by default for browsers that recognize that form without an
-extension; explicit `http://rn/gpus/` remains available when needed. The index shows the 12 most-used links in a responsive three-column grid,
-followed by the complete alphabetical directory with clickable paths,
-descriptions, dates, and creators. The compact add-link form at the top expands as you type, with a live preview.
-Descriptions are required when creating or editing links, including via the
-`description` POST field. Updates that omit the field preserve a nonempty
-existing description; blank descriptions are rejected.
+extension; explicit `http://rn/gpus/` remains available when needed.
+
+The compact directory pins the 10 most-used links above the remaining links.
+Click **Most popular · Pinned** to turn pinning off and sort all links together;
+the preference is remembered in your browser. Column headers sort by path,
+clicks, date added, or creator. The full-width add form expands to show the
+required description and Save button once typing starts. Descriptions are
+required by both the form and API; updates that omit the field preserve a
+nonempty existing description.
 
 On first startup, existing SQLite databases receive additive `Description` and
 `CreatedBy` columns. New links record their original creator separately from the
