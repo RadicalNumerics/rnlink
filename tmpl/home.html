@@ -1,52 +1,54 @@
+{{ define "directory-row" }}
+<tr {{if .Rank}}class="popular-row"{{end}} data-path="{{.Short}}" data-date="{{.Created.Unix}}" data-user="{{.CreatedBy}}" data-clicks="{{.NumClicks}}">
+  <td class="rank-cell">{{if .Rank}}<span class="rank-badge" aria-label="Popularity rank {{.Rank}}">{{.Rank}}</span>{{else}}<span class="row-mark">↗</span>{{end}}</td>
+  <td><a class="directory-path" href="/{{.Short}}/">{{go}}/{{.Short}}/</a></td>
+  <td class="description-cell" title="{{.Description}}">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
+  <td class="clicks-cell">{{.NumClicks}}</td>
+  <td class="date-cell"><time datetime="{{.Created.Format "2006-01-02T15:04:05Z07:00"}}">{{.Created.Format "Jan 2, 2006"}}</time></td>
+  <td class="creator-cell" title="{{.CreatedBy}}">{{if .CreatedBy}}{{.CreatedBy}}{{else}}<span class="muted">Not recorded</span>{{end}}</td>
+  <td class="manage-cell"><a href="/.detail/{{.Short}}" aria-label="Edit {{go}}/{{.Short}}/">Edit <span aria-hidden="true">↗</span></a></td>
+</tr>
+{{end}}
 {{ define "main" }}
 <link rel="stylesheet" href="/.static/directory.css">
+<div class="directory-intro"><div><h2>Team links</h2></div><span class="total-count">{{len .Links}} links</span></div>
 {{if not .ReadOnly}}
 <section id="create-link" class="create-link" aria-label="Add a link">
-  <form method="POST" action="/" class="directory-form" id="create-form">
+  <form method="POST" action="/" id="create-form">
     <input type="hidden" name="xsrf" value="{{.XSRF}}">
-    <div class="path-input"><span id="path-prefix">{{go}}/</span><input id="short" name="short" aria-label="New link path" required type="text" value="{{.Short}}" placeholder="add a link" autocomplete="off" pattern="\w[\w\-\.]*" aria-controls="create-fields" title="Start with a letter, digit, or underscore; use letters, digits, underscores, dashes, and periods."><span aria-hidden="true">/</span></div>
+    <div class="composer-top">
+      <div class="path-input"><span>{{go}}/</span><input id="short" name="short" aria-label="New link path" required type="text" value="{{.Short}}" placeholder="name" autocomplete="off" pattern="\w[\w\-\.]*" aria-controls="create-fields"><span>/</span></div>
+      <span class="composer-arrow" aria-hidden="true">→</span>
+      <input id="long" name="long" aria-label="Destination URL" required type="text" placeholder="Paste a destination URL" {{if .Short}}value="{{.Long}}"{{end}}>
+      <span class="composer-hint">New link</span>
+    </div>
     <div id="create-fields" class="create-fields">
-      <div><label for="long">Destination</label><input id="long" name="long" required type="text" placeholder="https://…" {{if .Short}}value="{{.Long}}"{{end}}></div>
-      <div><label for="description">Description</label><textarea id="description" name="description" required rows="2" placeholder="What will teammates find here?"></textarea></div>
-      <div class="link-preview" aria-label="Link preview" aria-live="polite"><span class="preview-label">Preview</span><strong id="preview-path">{{go}}/{{.Short}}/</strong><span id="preview-description">Describe this link</span><span id="preview-destination">Add a destination</span></div>
-      <div class="form-actions"><button class="directory-button" type="submit">Add link</button><a class="directory-edit" href="/.help">Advanced options</a></div>
+      <input id="description" name="description" aria-label="Description" required type="text" placeholder="Add a description so everyone knows where this goes">
+      <button id="save-link" class="save-button" type="submit">Save link <span aria-hidden="true">↗</span></button>
     </div>
   </form>
 </section>
-<script src="/.static/directory.js" defer></script>
 {{end}}
-
-<div class="directory-heading">
-  <div><h2>Popular links</h2><p>Your team's most-used shortcuts.</p></div>
-</div>
-<section class="popular-grid" aria-label="Popular links">
-  {{range .Popular}}
-  <a class="popular-card" href="/{{.Short}}/">
-    <strong>{{go}}/{{.Short}}/</strong>
-    <span class="link-description">{{if .Description}}{{.Description}}{{else}}{{.Long}}{{end}}</span>
-    <span class="click-count">{{.NumClicks}} clicks</span>
-  </a>
-  {{else}}<p>No links yet. Add your first shortcut above.</p>{{end}}
-</section>
-
-<section class="all-links" aria-labelledby="all-links-title">
-  <div class="directory-heading"><h2 id="all-links-title">All links <span class="link-count">{{len .Links}}</span></h2></div>
-  <div class="directory-table-scroll">
+<section aria-label="Link directory">
+  <div class="table-toolbar"><button type="button" id="toggle-popular" class="popular-key" aria-pressed="true" title="Toggle whether the 10 most popular links stay at the top"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 2h4l-.5 4L12 8H4l2.5-2L6 2ZM8 8v6" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg> Most popular <span class="pin-state">Pinned</span></button><span id="sort-status">Other links · A–Z</span></div>
+  <div class="directory-table-scroll" id="directory-table-scroll">
     <table class="directory-table">
-      <thead><tr><th scope="col">Path</th><th scope="col">Description</th><th scope="col">Added</th><th scope="col">Added by</th><th scope="col">Manage</th></tr></thead>
-      <tbody>
-      {{range .Links}}
-        <tr>
-          <td><a class="directory-path" href="/{{.Short}}/">{{go}}/{{.Short}}/</a></td>
-          <td class="description-cell">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
-          <td class="date-cell"><time datetime="{{.Created.Format "2006-01-02T15:04:05Z07:00"}}" title="{{.Created.Format "Jan 2, 2006 15:04 MST"}}">{{.Created.Format "Jan 2, 2006"}}</time></td>
-          <td class="creator-cell">{{if .CreatedBy}}{{.CreatedBy}}{{else}}<span class="muted" title="The original creator was not recorded for this link.">Not recorded</span>{{end}}</td>
-          <td><a class="directory-edit" href="/.detail/{{.Short}}" aria-label="Details for {{go}}/{{.Short}}/">Details</a></td>
-        </tr>
-      {{else}}<tr><td colspan="5" class="muted">No links yet.</td></tr>{{end}}
-      </tbody>
+      <colgroup><col class="col-rank"><col class="col-path"><col class="col-description"><col class="col-clicks"><col class="col-date"><col class="col-user"><col class="col-edit"></colgroup>
+      <thead><tr>
+        <th scope="col"><span class="sr-only">Rank</span></th>
+        <th scope="col" aria-sort="ascending"><button data-sort="path">Link <span class="sort-arrow">↑</span></button></th>
+        <th scope="col">Description</th>
+        <th scope="col"><button data-sort="clicks">Clicks <span class="sort-arrow">↕</span></button></th>
+        <th scope="col"><button data-sort="date">Added <span class="sort-arrow">↕</span></button></th>
+        <th scope="col"><button data-sort="user">Added by <span class="sort-arrow">↕</span></button></th>
+        <th scope="col"><span class="sr-only">Manage</span></th>
+      </tr></thead>
+      <tbody id="popular-links" aria-label="Most popular links">{{range .Popular}}{{template "directory-row" .}}{{end}}</tbody>
+      <tbody class="table-divider"><tr><td colspan="7">ALL OTHER LINKS <span>Sorted independently · popular links stay pinned above</span></td></tr></tbody>
+      <tbody id="other-links" aria-label="All other links">{{range .Other}}{{template "directory-row" .}}{{else}}<tr><td colspan="7" class="empty-state">{{if .Links}}You're all caught up — every link is listed above.{{else}}Add your first team link above.{{end}}</td></tr>{{end}}</tbody>
     </table>
   </div>
+  <p class="directory-note">Tip: type <code>{{go}}/name/</code> in your address bar. No extension needed in supported browsers.</p>
 </section>
-
-{{ end }}
+<script src="/.static/directory.js" defer></script>
+{{end}}

@@ -124,10 +124,10 @@ func TestHomeDirectory(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatal(w.Code)
 	}
-	if strings.Count(body, `class="popular-card"`) != 12 {
-		t.Fatal("expected exactly 12 popular cards")
+	if strings.Count(body, `class="popular-row"`) != 10 {
+		t.Fatal("expected exactly 10 popular rows")
 	}
-	popular := strings.Split(body, `<section class="all-links"`)[0]
+	popular := strings.Split(strings.Split(body, `<tbody id="popular-links"`)[1], `</tbody>`)[0]
 	if strings.Contains(popular, `href="/link00/"`) || strings.Contains(popular, "deleted") {
 		t.Fatal("popular grid includes low-ranked or deleted links")
 	}
