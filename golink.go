@@ -1285,6 +1285,15 @@ func (s *Server) serveSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	description := strings.TrimSpace(r.PostFormValue("description"))
+	if !r.PostForm.Has("description") && link != nil {
+		description = link.Description
+	}
+	if strings.TrimSpace(description) == "" {
+		http.Error(w, "description is required", http.StatusBadRequest)
+		return
+	}
+
 	// allow transferring ownership to valid users. If empty, set owner to current user.
 	owner := r.FormValue("owner")
 	if owner != "" {
@@ -1312,10 +1321,7 @@ func (s *Server) serveSave(w http.ResponseWriter, r *http.Request) {
 	}
 	link.Short = short
 	link.Long = long
-	// Omitted descriptions from older API clients must not erase existing text.
-	if r.PostForm.Has("description") {
-		link.Description = strings.TrimSpace(r.PostFormValue("description"))
-	}
+	link.Description = description
 	link.LastEdit = now
 	link.Owner = owner
 	if err := s.db.Save(link); err != nil {

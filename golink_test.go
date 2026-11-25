@@ -300,9 +300,10 @@ func TestServeSave(t *testing.T) {
 			t.Cleanup(func() { s.allowUnknownUsers = oldAllowUnknownUsers })
 
 			r := httptest.NewRequest("POST", "/", strings.NewReader(url.Values{
-				"short": {tt.short},
-				"long":  {tt.long},
-				"xsrf":  {tt.xsrf},
+				"short":       {tt.short},
+				"long":        {tt.long},
+				"description": {"Test destination"},
+				"xsrf":        {tt.xsrf},
 			}.Encode()))
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
