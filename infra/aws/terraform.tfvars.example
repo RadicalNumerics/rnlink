@@ -1,0 +1,8 @@
+account_id = "123456789012"
+region = "us-west-2"
+vpc_id = "vpc-example"
+subnet_id = "subnet-example"
+bucket_name = "rnlink-state-123456789012-us-west-2"
+instance_type = "t4g.small"
+image_tag = "0123456789abcdef"
+ami_id = "ami-example-arm64"
