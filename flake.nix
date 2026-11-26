@@ -13,9 +13,14 @@
     ,
     }:
     let
-      goVersion = nixpkgs.lib.fileContents ./go.toolchain.version;
-      toolChainRev = nixpkgs.lib.fileContents ./go.toolchain.rev;
-      gitHash = nixpkgs.lib.fileContents ./go.toolchain.rev.sri;
+      # Keep the security patch in sync with go.mod even when nixpkgs lags.
+      patchedGo = pkgs: pkgs.go_1_27.overrideAttrs (old: {
+        version = "1.27.4";
+        src = pkgs.fetchurl {
+          url = "https://go.dev/dl/go1.27.4.src.tar.gz";
+          sha256 = "73cfb8571aec0c01177687db87163d46aa20e9779672772891aa17654d9a6099";
+        };
+      });
       eachSystem = f:
         nixpkgs.lib.genAttrs (import systems) (system:
           f (import nixpkgs {
@@ -27,11 +32,11 @@
       formatter = eachSystem (pkgs: pkgs.nixpkgs-fmt);
 
       devShells = eachSystem (pkgs: {
-        default = pkgs.mkShell { buildInputs = [ pkgs.go_1_27 ]; };
+        default = pkgs.mkShell { buildInputs = [ (patchedGo pkgs) ]; };
       });
 
       packages = eachSystem (pkgs: {
-        default = pkgs.buildGo127Module {
+        default = (pkgs.buildGo127Module.override { go = patchedGo pkgs; }) {
           pname = "golink";
           version = if (self ? shortRev) then self.shortRev else "dev";
           src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;

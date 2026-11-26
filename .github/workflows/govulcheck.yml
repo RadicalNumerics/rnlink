@@ -22,4 +22,3 @@ jobs:
 
       - name: Scan source code for known vulnerabilities
         run: govulncheck -test ./...
-
