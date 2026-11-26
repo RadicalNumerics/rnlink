@@ -3,3 +3,6 @@ package-lock.json
 .direnv
 .envrc
 result
+
+__pycache__/
+infra/aws/slack-alert.zip
