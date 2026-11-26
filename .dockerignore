@@ -6,3 +6,6 @@ infra/**/*.tfstate*
 infra/**/*.tfplan
 infra/**/*.tfvars
 infra/**/backend.hcl
+
+**/__pycache__
+infra/**/*.zip

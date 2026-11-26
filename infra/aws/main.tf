@@ -120,6 +120,8 @@ resource "aws_instance" "rnlink" {
   credit_specification { cpu_credits = "standard" }
   tags = { Name = "rnlink" }
   lifecycle {
+    # SSM owns runtime changes; avoid replacing the server for image updates.
+    ignore_changes = [user_data]
     precondition {
       condition     = data.aws_subnet.selected.vpc_id == var.vpc_id
       error_message = "Subnet must belong to the selected VPC."
@@ -147,7 +149,7 @@ resource "aws_iam_role_policy_attachment" "snapshots" {
 resource "aws_dlm_lifecycle_policy" "data" {
   description        = "Daily rnlink data and Tailscale identity snapshots"
   execution_role_arn = aws_iam_role.snapshots.arn
-  state              = "ENABLED"
+  state              = var.disk_snapshots_enabled ? "ENABLED" : "DISABLED"
   policy_details {
     resource_types = ["VOLUME"]
     target_tags    = { Name = "rnlink-data", Project = "rnlink" }
