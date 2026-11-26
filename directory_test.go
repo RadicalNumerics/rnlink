@@ -229,3 +229,52 @@ func TestDescriptionRequired(t *testing.T) {
 		}
 	}
 }
+
+func TestInlineCreateValidationAndConflict(t *testing.T) {
+	s := newTestServer(t)
+	post := func(short, long string, validate bool) *httptest.ResponseRecorder {
+		fields := url.Values{"short": {short}, "long": {long}, "description": {"A useful link"}, "xsrf": {xsrftoken.Generate(s.xsrfKey, "foo@example.com", newShortName)}}
+		if validate {
+			fields.Set("validate", "true")
+		}
+		r := httptest.NewRequest("POST", "/", strings.NewReader(fields.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Set("Accept", "application/json")
+		r.Header.Set("X-RN-Inline", "true")
+		w := httptest.NewRecorder()
+		s.serveSave(w, r)
+		return w
+	}
+	if w := post("bad name", "https://example.com", true); w.Code != 400 {
+		t.Fatalf("space: %d", w.Code)
+	}
+	for _, long := range []string{"https://example.com/{{", "https://example.com/{{.Missing}}"} {
+		if w := post("new", long, true); w.Code != 400 {
+			t.Fatalf("invalid template: %d", w.Code)
+		}
+	}
+	if w := post("new", "https://example.com/{{.Path | PathEscape}}", true); w.Code != 204 {
+		t.Fatalf("validation: %d %s", w.Code, w.Body.String())
+	}
+	if links, err := s.db.LoadAll(); err != nil || len(links) != 0 {
+		t.Fatalf("validation wrote data: %v %v", links, err)
+	}
+	w := post("new", "https://example.com/{{.Path | PathEscape}}", false)
+	if w.Code != 200 {
+		t.Fatalf("save: %d %s", w.Code, w.Body.String())
+	}
+	var result struct{ Short, Row string }
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Short != "new" || !strings.Contains(result.Row, `data-path="new"`) {
+		t.Fatalf("invalid row: %+v", result)
+	}
+	if w := post("new", "https://different.example", false); w.Code != 409 || w.Header().Get("Location") != "" {
+		t.Fatalf("conflict: %d %s", w.Code, w.Body.String())
+	}
+	link, _ := s.db.Load("new")
+	if link.Long != "https://example.com/{{.Path | PathEscape}}" {
+		t.Fatal("duplicate overwrote link")
+	}
+}

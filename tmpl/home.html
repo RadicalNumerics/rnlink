@@ -17,15 +17,16 @@
   <form method="POST" action="/" id="create-form">
     <input type="hidden" name="xsrf" value="{{.XSRF}}">
     <div class="composer-top">
-      <div class="path-input"><span>{{go}}/</span><input id="short" name="short" aria-label="New link path" required type="text" value="{{.Short}}" placeholder="name" autocomplete="off" pattern="\w[\w\-\.]*" aria-controls="create-fields"><span>/</span></div>
+      <div class="path-input"><span>{{go}}/</span><input id="short" name="short" aria-label="New link path" required type="text" value="{{.Short}}" placeholder="name" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="create-feedback" pattern="\w[\w\-\.]*" aria-controls="create-fields"><span>/</span></div>
       <span class="composer-arrow" aria-hidden="true">→</span>
-      <input id="long" name="long" aria-label="Destination URL" required type="text" placeholder="Paste a destination URL" {{if .Short}}value="{{.Long}}"{{end}}>
+      <input id="long" name="long" autocorrect="off" autocapitalize="none" spellcheck="false" aria-label="Destination URL" required type="text" placeholder="Paste a destination URL" {{if .Short}}value="{{.Long}}"{{end}}>
       <span class="composer-hint">New link</span>
     </div>
     <div id="create-fields" class="create-fields">
       <input id="description" name="description" aria-label="Description" required type="text" placeholder="Add a description so everyone knows where this goes">
       <button id="save-link" class="save-button" type="submit">Save link <span aria-hidden="true">↗</span></button>
     </div>
+    <p id="create-feedback" class="create-feedback" role="status" aria-live="polite" hidden></p>
   </form>
 </section>
 {{end}}
