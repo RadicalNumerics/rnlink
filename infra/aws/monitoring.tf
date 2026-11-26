@@ -20,8 +20,9 @@ resource "aws_ssm_document" "runtime" {
         backup   = filebase64("${path.module}/scripts/backup.py")
         monitor  = filebase64("${path.module}/scripts/monitor.py")
         config = base64encode(jsonencode({
-          region = var.region, bucket = var.bucket_name,
-          data   = "/srv/rnlink/data", last_backup = "/srv/rnlink/last-backup-success.json"
+          region      = var.region, bucket = var.bucket_name,
+          data        = "/srv/rnlink/data", last_backup = "/srv/rnlink/last-backup-success.json",
+          alert_topic = aws_sns_topic.alerts.arn, expiry_warning_marker = "/srv/rnlink/last-expiry-warning.json"
         }))
       })]
     } }]
@@ -35,13 +36,14 @@ resource "aws_ssm_association" "runtime" {
     key    = "InstanceIds"
     values = [aws_instance.rnlink.id]
   }
-  depends_on = [aws_volume_attachment.data, aws_iam_role_policy.metrics]
+  depends_on = [aws_volume_attachment.data, aws_iam_role_policy.metrics, aws_iam_role_policy.expiry_notifications]
 }
 locals {
   app_alarms = {
-    readiness = { metric = "ServiceHealthy", operator = "LessThanThreshold", threshold = 1, periods = 3 }
-    disk      = { metric = "DiskUsedPercent", operator = "GreaterThanThreshold", threshold = 85, periods = 3 }
-    backup    = { metric = "BackupAgeSeconds", operator = "GreaterThanThreshold", threshold = 1800, periods = 2 }
+    expiry-telemetry = { metric = "NodeKeyExpiryAvailable", operator = "LessThanThreshold", threshold = 1, periods = 3 }
+    readiness        = { metric = "ServiceHealthy", operator = "LessThanThreshold", threshold = 1, periods = 3 }
+    disk             = { metric = "DiskUsedPercent", operator = "GreaterThanThreshold", threshold = 85, periods = 3 }
+    backup           = { metric = "BackupAgeSeconds", operator = "GreaterThanThreshold", threshold = 1800, periods = 2 }
   }
 }
 resource "aws_cloudwatch_metric_alarm" "application" {
@@ -58,4 +60,11 @@ resource "aws_cloudwatch_metric_alarm" "application" {
   dimensions          = { Service = "rnlink" }
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+resource "aws_iam_role_policy" "expiry_notifications" {
+  role = aws_iam_role.rnlink.id
+  policy = jsonencode({ Version = "2012-10-17", Statement = [{
+    Effect = "Allow", Action = "sns:Publish", Resource = aws_sns_topic.alerts.arn
+  }] })
 }
