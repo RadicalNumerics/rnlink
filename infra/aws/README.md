@@ -82,23 +82,63 @@ sudo journalctl -u rnlink --since '10 minutes ago'
 sudo systemctl restart rnlink
 ```
 
-The daily systemd timer uses SQLite's online backup API and uploads a consistent
-database snapshot under `backups/`. It does not stop the app. The host can write
-backups and read migration archives, but cannot access Terraform state. Database backups are retained for 30 days and
-contain link metadata, not the node's credentials. The persistent EBS volume
-holds the identity; DLM retains seven daily snapshots of that disk. These are
-crash-consistent disk snapshots; SQLite backups provide database-level consistency.
-Take an additional EBS snapshot before disk maintenance.
-Backups and state are encrypted and versioned; public access is blocked.
+The systemd backup timer runs every 15 minutes (up to 30 seconds jitter).
+It uses SQLite's online backup API, checks database integrity, and uploads a
+compressed archive containing only `golink.db` and the atomic Tailscale identity
+file `.config/tsnet-golink/tailscaled.state`. S3 confirms its SHA-256 checksum
+before the successful-backup timestamp advances. Logs and certificates are
+excluded; certificates regenerate automatically. Archives contain credentials:
+keep them private. The host can write backups and read migration archives but
+cannot read Terraform state or historic backups.
 
-To roll back a failed migration, first stop the AWS service, then restart the
-old container using its retained data. To update the application, publish a new
-immutable commit tag, update `image_tag`, and review the full Terraform plan.
-The pinned AMI prevents unrelated plans from following a moving latest image.
-Volume detachment first stops the old instance. The current configuration
-replaces the host when its bootstrap changes; the
-separate data disk survives and is attached to the replacement. Start the
-service after confirming the mount and data are intact.
+Current backup objects expire after 30 days; older versions expire 30 days after
+becoming noncurrent. Backups and state are encrypted, versioned, and blocked
+from public access. Keep `disk_snapshots_enabled = true` until a compact backup
+restore has passed, then set it to false to stop creating daily disk snapshots.
+Existing snapshots are not deleted by disabling the policy.
+
+Application updates use immutable ECR commit tags. Update `image_tag` and apply
+a reviewed full plan. SSM pulls the image, verifies a pre-deployment backup,
+restarts RN, checks readiness, and installs timers. A failed deployment restores
+the last known-good service unit. This is application rollback, not automatic
+database rollback: schema-changing releases require a migration-specific plan.
+The pre-deployment backup key is retained in `/opt/rnlink/pre-deploy-backup.json`.
+If a failed association does not rerun on apply, explicitly plan with
+`-replace=aws_ssm_association.runtime` after fixing its cause.
+
+Bootstrap/user-data changes do not replace the running instance. For an AMI
+upgrade, explicitly plan instance replacement, preserving the separate data
+volume. SSM requires the mounted database before starting a copied identity.
+For first-time migration to an empty volume, provision the host and volume first
+with targeted plans, restore the data as described above, then apply the full
+plan to configure the runtime. Do not start the old host again.
+
+### Restore drill and recovery
+
+Download a chosen `backups/*.tar.gz` using an authorized operator's AWS SSO
+credentials, into a private temporary directory (`umask 077`). Extract only the
+two expected paths listed above, using safe tar extraction. Open the extracted
+SQLite database and run `PRAGMA integrity_check`; inspect link counts and
+metadata. Validate that the identity file parses as JSON. A drill must never
+start another copy of the Tailscale identity. Remove the scratch copy afterward.
+
+For actual recovery, stop `rnlink.service` and confirm the old container is
+stopped. Retain a private copy of the current data first. Restore the validated
+archive into an empty `/srv/rnlink/data` on the mounted data volume (do not leave
+old SQLite WAL/SHM files beside a restored database), set ownership to
+`65532:65532`, and apply the SSM runtime configuration. Verify `http://rn/` and
+`rn/gpus/` from a tailnet client. Never run two copies of the identity.
+
+### Monitoring
+
+A timer publishes `RNLink` metrics every minute: database/Tailscale readiness,
+maximum root/data disk use, and seconds since a confirmed backup. CloudWatch
+alerts after three unhealthy minutes, three minutes above 85% disk use, or two
+minutes with a backup older than 30 minutes. Missing metrics count as failure.
+EC2 status checks and Slack Lambda errors have separate alarms. Alarm and
+recovery notifications go to Slack and the confirmed email subscriptions.
+Readiness listens only on host loopback; it is not publicly exposed. It checks
+local Tailscale status, not independent client-to-server reachability.
 
 Do not use `terraform destroy` as a routine rollback: state and data have
 `prevent_destroy` guards. Removing those guards is a deliberate data-retirement

@@ -26,3 +26,9 @@ variable "ami_id" {
   type        = string
   description = "Pinned Amazon Linux 2023 ARM64 AMI; update deliberately."
 }
+
+variable "disk_snapshots_enabled" {
+  type        = bool
+  default     = true
+  description = "Disable only after validating a compact backup restore."
+}
