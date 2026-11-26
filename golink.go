@@ -1252,7 +1252,7 @@ func (s *Server) serveSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !reShortName.MatchString(short) {
-		http.Error(w, "short may only contain letters, numbers, dash, and period", http.StatusBadRequest)
+		http.Error(w, "Name must start with a letter, number, or underscore; use only letters, numbers, underscores, dashes, and periods (no spaces).", http.StatusBadRequest)
 		return
 	}
 	if _, err := texttemplate.New("").Funcs(expandFuncMap).Parse(long); err != nil {
@@ -1293,11 +1293,26 @@ func (s *Server) serveSave(w http.ResponseWriter, r *http.Request) {
 			// The user submitted from the home page create form but the link
 			// already exists. Redirect to the detail page so they can edit it
 			// intentionally rather than accidentally overwriting it.
-			http.Redirect(w, r, "/.detail/"+url.PathEscape(short)+"?exists=1", http.StatusSeeOther)
+			if r.Header.Get("X-RN-Inline") == "true" {
+				http.Error(w, "That name already exists. Choose another name or edit the existing link.", http.StatusConflict)
+			} else {
+				http.Redirect(w, r, "/.detail/"+url.PathEscape(short)+"?exists=1", http.StatusSeeOther)
+			}
 		} else {
 			http.Error(w, "invalid XSRF token", http.StatusBadRequest)
 		}
 		return
+	}
+
+	if r.Header.Get("X-RN-Inline") == "true" {
+		if _, err := expandLink(long, expandEnv{Path: "example", Now: time.Now(), user: cu.login}); err != nil {
+			http.Error(w, "Destination template cannot be expanded: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if r.PostFormValue("validate") == "true" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 	}
 
 	description := strings.TrimSpace(r.PostFormValue("description"))
@@ -1344,7 +1359,18 @@ func (s *Server) serveSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if acceptHTML(r) {
+	if r.Header.Get("X-RN-Inline") == "true" {
+		var row bytes.Buffer
+		if err := s.homeTmpl.ExecuteTemplate(&row, "directory-row", searchResult{Link: link}); err != nil {
+			http.Error(w, "Link saved; reload the directory to see it.", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			Short string
+			Row   string
+		}{short, row.String()})
+	} else if acceptHTML(r) {
 		s.successTmpl.Execute(w, homeData{Short: short})
 	} else {
 		w.Header().Set("Content-Type", "application/json")
