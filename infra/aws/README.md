@@ -160,3 +160,19 @@ SNS email subscriptions to enable normal and delivery-failure email alerts.
 
 Test the complete pipeline with a clearly labeled test message published to the
 `rnlink-alerts` SNS topic. Check Lambda errors and the channel for delivery.
+
+### Tailscale expiry warning
+
+Every minute, the private readiness endpoint reads the current Tailscale node
+key expiry from the local Tailscale API. At seven days or less remaining, the
+monitor publishes one warning per UTC calendar day to the RN alert topic
+(Slack and email), without mentioning anyone. The timestamp is read fresh on
+every check: renewing the node key beyond seven days automatically stops the
+warnings. A persistent marker advances only after SNS accepts the message;
+failed publications retry on the next check. Delivery is at-least-once, so a
+crash after publication but before recording the marker can cause a duplicate.
+
+Explicitly disabled key expiry suppresses expiry warnings. Missing or malformed
+expiry telemetry triggers `rnlink-expiry-telemetry` instead of silently treating
+the key as non-expiring. HTTPS certificate renewal is separate and does not
+renew Tailscale node authorization.

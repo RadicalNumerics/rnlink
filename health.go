@@ -44,6 +44,11 @@ func (s *Server) serveHealth(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "tailnet unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		expiry := "disabled"
+		if status.Self.KeyExpiry != nil && !status.Self.KeyExpiry.IsZero() {
+			expiry = status.Self.KeyExpiry.UTC().Format(time.RFC3339)
+		}
+		w.Header().Set("X-RN-Node-Key-Expiry", expiry)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
