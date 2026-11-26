@@ -237,6 +237,7 @@ func New(opts Options) (*Server, error) {
 // of cmd/golink; embedders should use New instead.
 func Run(ctx context.Context) error {
 	var (
+		healthListen      = flag.String("health-listen", "", "optional host-network health listener; restrict to localhost or a loopback-only container port mapping")
 		verbose           = flag.Bool("verbose", false, "be verbose")
 		controlURL        = flag.String("control-url", ipn.DefaultControlURL, "the URL base of the control plane (i.e. coordination server)")
 		sqlitefile        = flag.String("sqlitedb", "", "path of SQLite database to store links")
@@ -358,7 +359,7 @@ func Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		return serveHTTP(ctx, listenerServer{srv: &http.Server{Handler: s.Handler()}, ln: ln})
+		return s.serveWithHealth(ctx, *healthListen, listenerServer{srv: &http.Server{Handler: s.Handler()}, ln: ln})
 	}
 
 	if *hostname == "" {
@@ -432,7 +433,7 @@ out:
 
 		httpsHandler := HSTS(httpHandler)
 		log.Printf("Serving https://%s/ as service %s ...", fqdn, *serviceName)
-		return serveHTTP(ctx, listenerServer{srv: &http.Server{Handler: httpsHandler}, ln: serviceListener})
+		return s.serveWithHealth(ctx, *healthListen, listenerServer{srv: &http.Server{Handler: httpsHandler}, ln: serviceListener})
 	}
 
 	// Standard mode: use regular listeners
@@ -458,7 +459,7 @@ out:
 	log.Printf("Serving http://%s/ ...", *hostname)
 	servers = append(servers, listenerServer{srv: &http.Server{Handler: httpHandler}, ln: httpListener})
 
-	return serveHTTP(ctx, servers...)
+	return s.serveWithHealth(ctx, *healthListen, servers...)
 }
 
 // listenerServer pairs an http.Server with the listener it serves on.

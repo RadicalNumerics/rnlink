@@ -103,3 +103,20 @@ service after confirming the mount and data are intact.
 Do not use `terraform destroy` as a routine rollback: state and data have
 `prevent_destroy` guards. Removing those guards is a deliberate data-retirement
 operation, not part of application updates.
+
+### Slack alerts
+
+CloudWatch alarms publish to `rnlink-alerts`. Its Lambda subscription forwards
+notifications to `#reflex-ops-services` using the incoming webhook stored in
+Secrets Manager at `rnlink/slack-webhook`. Set or rotate the secret value outside
+Terraform; never put it in tfvars, source control, or logs. The Lambda role can
+read only this secret. No Slack read access or interactive bot is required.
+
+Slack delivery failures retry through Lambda asynchronous invocation and land
+in `rnlink-slack-alert-failures` after retries are exhausted (14-day retention).
+The `rnlink-slack-delivery-errors` alarm sends email through a separate SNS topic
+to avoid a broken Slack integration reporting only to itself. Confirm both AWS
+SNS email subscriptions to enable normal and delivery-failure email alerts.
+
+Test the complete pipeline with a clearly labeled test message published to the
+`rnlink-alerts` SNS topic. Check Lambda errors and the channel for delivery.
