@@ -58,5 +58,4 @@ resource "aws_cloudwatch_metric_alarm" "application" {
   dimensions          = { Service = "rnlink" }
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
-  depends_on          = [aws_ssm_association.runtime]
 }

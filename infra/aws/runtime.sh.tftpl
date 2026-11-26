@@ -1,9 +1,10 @@
 #!/bin/bash
-set -euo pipefail
+set -Eeuo pipefail
 cloud-init status --wait >/dev/null || true
 mountpoint -q /srv/rnlink
 test -f /srv/rnlink/data/golink.db
-dnf install -y python3 curl >/dev/null
+dnf install -y python3 >/dev/null
+command -v curl >/dev/null || dnf install -y curl-minimal >/dev/null
 install -d -m 700 /opt/rnlink
 printf '%s' '${backup}' | base64 -d > /opt/rnlink/backup.py
 printf '%s' '${monitor}' | base64 -d > /opt/rnlink/monitor.py
@@ -12,7 +13,22 @@ chmod 600 /opt/rnlink/*
 # Pull before stopping the healthy application.
 aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${registry}
 docker pull ${image}
-cp /etc/systemd/system/rnlink.service /opt/rnlink/previous.service
+# Require a verified remote restore point before changing the running app.
+python3 /opt/rnlink/backup.py /opt/rnlink/config.json
+cp /srv/rnlink/last-backup-success.json /opt/rnlink/pre-deploy-backup.json
+if [ ! -f /opt/rnlink/last-good.service ]; then
+  cp /etc/systemd/system/rnlink.service /opt/rnlink/last-good.service
+fi
+rollback() {
+  trap - ERR
+  cp /opt/rnlink/last-good.service /etc/systemd/system/rnlink.service
+  systemctl daemon-reload
+  systemctl restart rnlink
+  systemctl is-active --quiet rnlink
+  echo 'Deployment failed; restored last known good application unit' >&2
+  exit 1
+}
+trap rollback ERR
 cat > /etc/systemd/system/rnlink.service <<'UNIT'
 [Unit]
 Description=RN private link directory
@@ -25,6 +41,7 @@ ConditionPathExists=/srv/rnlink/data/golink.db
 Restart=always
 RestartSec=10
 TimeoutStopSec=40
+ExecStartPre=-/usr/bin/docker rm -f rnlink
 ExecStart=/usr/bin/docker run --rm --name rnlink --read-only --tmpfs /tmp --log-opt max-size=10m --log-opt max-file=3 -p 127.0.0.1:9091:9091 --volume /srv/rnlink/data:/home/nonroot ${image} --hostname=rn --sqlitedb=/home/nonroot/golink.db --health-listen=0.0.0.0:9091
 ExecStop=/usr/bin/docker stop --time 25 rnlink
 [Install]
@@ -73,17 +90,15 @@ systemctl daemon-reload
 systemctl restart rnlink
 READY=0
 for attempt in $(seq 1 60); do
-  if curl -fsS --max-time 2 http://127.0.0.1:9091/healthz >/dev/null; then READY=1; break; fi
+  if [ "$(curl -fsS --max-time 2 http://127.0.0.1:9091/healthz)" = ok ]; then READY=1; break; fi
   sleep 2
 done
 if [ "$READY" != 1 ]; then
-  cp /opt/rnlink/previous.service /etc/systemd/system/rnlink.service
-  systemctl daemon-reload
-  systemctl restart rnlink
-  echo 'Readiness failed; rolled back application unit' >&2
-  exit 1
+  rollback
 fi
 systemctl enable --now rnlink-backup.timer rnlink-monitor.timer
 systemctl start rnlink-backup.service
 systemctl start rnlink-monitor.service
+cp /etc/systemd/system/rnlink.service /opt/rnlink/last-good.service
+trap - ERR
 echo 'RN deployment healthy; first compact backup and metrics published'
